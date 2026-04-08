@@ -7,6 +7,19 @@ WIDTH, HEIGHT = 1280, 720
 FPS = 60
 WINDOW_TITLE = "Particle Simulator — Hand Controlled"
 
+# ── Tracker backend ─────────────────────
+# auto    -> mediapipe on laptop, jetson on aarch64
+# mediapipe -> force MediaPipe backend
+# jetson  -> force Jetson-native backend
+HAND_BACKEND = "auto"
+
+# Jetson pose model name used by jetson-inference poseNet
+# You can override with env var JETSON_POSE_MODEL.
+JETSON_POSE_MODEL = "resnet18-hand"
+
+# Confidence threshold for Jetson pose backend
+JETSON_POSE_THRESHOLD = 0.15
+
 # ── Particle limits ──────────────────────
 PARTICLE_COUNT_LOW    = 100
 PARTICLE_COUNT_MID    = 1000

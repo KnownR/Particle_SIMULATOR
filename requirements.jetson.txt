@@ -1,0 +1,7 @@
+# Jetson Nano runtime Python deps for this app.
+# NOTE: jetson_utils / jetson_inference are typically provided by
+# the NVIDIA Jetson environment or dusty-nv/jetson-inference container,
+# not installed with pip.
+
+numpy>=1.19,<2.0
+# OpenCV should come from JetPack/Jetson container images.
