@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-$HOME/Particle_SIMULATOR}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$DEFAULT_PROJECT_DIR}"
 VENV_DIR="${VENV_DIR:-$PROJECT_DIR/venv}"
 FRAMES="${FRAMES:-30}"
 CHECK_JETSON_INIT="${CHECK_JETSON_INIT:-1}"
