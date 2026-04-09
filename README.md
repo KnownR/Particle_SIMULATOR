@@ -46,7 +46,7 @@ Optional flags:
 ```bash
 FRAMES=60 ./scripts/smoke_checks.sh
 RUN_APP=0 ./scripts/run_jetson_docker.sh
-IMAGE=dusty-nv/jetson-inference:r32.7.1 ./scripts/run_jetson_docker.sh
+IMAGE=dustynv/jetson-inference:r32.7.1 ./scripts/run_jetson_docker.sh
 ```
 
 ---
@@ -161,7 +161,7 @@ docker run --rm -it --runtime nvidia --network host --ipc host \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v $HOME/Particle_SIMULATOR:/workspace/Particle_SIMULATOR \
-  dusty-nv/jetson-inference:r32.7.1
+  dustynv/jetson-inference:r32.7.1
 ```
 
 4) Inside container:
