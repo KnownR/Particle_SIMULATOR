@@ -53,6 +53,12 @@ python3 -m pip uninstall -y \
   opencv-contrib-python \
   opencv-python-headless \
   opencv-contrib-python-headless || true
+rm -rf /usr/local/lib/python3.6/dist-packages/cv2* || true
+rm -rf /usr/local/lib/python3.6/dist-packages/opencv_python* || true
+rm -rf /usr/local/lib/python3.8/dist-packages/cv2* || true
+rm -rf /usr/local/lib/python3.8/dist-packages/opencv_python* || true
+rm -rf /usr/local/lib/python3.10/dist-packages/cv2* || true
+rm -rf /usr/local/lib/python3.10/dist-packages/opencv_python* || true
 apt-get update
 apt-get install -y \
   python3-opencv \
