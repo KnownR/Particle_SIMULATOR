@@ -48,8 +48,22 @@ docker run --rm -it --runtime nvidia --network host --ipc host \
   bash -lc "
 set -euo pipefail
 cd /workspace/Particle_SIMULATOR
+python3 -m pip uninstall -y \
+  opencv-python \
+  opencv-contrib-python \
+  opencv-python-headless \
+  opencv-contrib-python-headless || true
+apt-get update
+apt-get install -y \
+  python3-opencv \
+  libgl1 \
+  libglib2.0-0 \
+  libsm6 \
+  libxext6 \
+  libxrender1
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.jetson.txt
+python3 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
 python3 smoke_test.py --backend mock --frames '$FRAMES'
 python3 -c \"from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print('[PASS] backend=', t.backend_name)\"
 if [ '$RUN_APP' = '1' ]; then
