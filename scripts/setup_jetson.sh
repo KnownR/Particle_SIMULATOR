@@ -36,6 +36,7 @@ sudo apt update
 sudo apt install -y \
   python3-venv \
   python3-pip \
+  python3-opencv \
   libgl1 \
   libglib2.0-0 \
   libsm6 \
@@ -43,7 +44,7 @@ sudo apt install -y \
   libxrender1
 
 log "Creating virtual environment: $VENV_DIR"
-python3 -m venv "$VENV_DIR"
+python3 -m venv --system-site-packages "$VENV_DIR"
 
 log "Activating virtual environment and installing Python dependencies"
 # shellcheck disable=SC1090
