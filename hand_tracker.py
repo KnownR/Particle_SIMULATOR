@@ -4,7 +4,6 @@
 #  Jetson: jetson-inference pose backend
 # ─────────────────────────────────────────
 
-import cv2
 import math
 import os
 import platform
@@ -16,6 +15,13 @@ from config import (
     JETSON_POSE_THRESHOLD,
     PINCH_THRESHOLD,
 )
+
+try:
+    import cv2
+    _CV2_IMPORT_ERROR = None
+except Exception as exc:
+    cv2 = None
+    _CV2_IMPORT_ERROR = exc
 
 
 MODEL_PATH = "hand_landmarker.task"
@@ -41,7 +47,17 @@ def _ensure_mediapipe_model():
         print("[INFO] Download complete.")
 
 
+def _require_cv2():
+    if cv2 is None:
+        raise RuntimeError(
+            "OpenCV import failed. Install system OpenGL libs first (e.g. libgl1, "
+            "libglib2.0-0) and ensure cv2 is installed in this environment."
+        ) from _CV2_IMPORT_ERROR
+
+
 def _draw_landmarks(frame, landmarks_px):
+    if cv2 is None:
+        return
     for x, y in landmarks_px:
         cv2.circle(frame, (x, y), 4, (0, 255, 0), -1)
     for a, b in CONNECTIONS:
@@ -93,6 +109,7 @@ def _extract_from_points(pts, w, h):
 
 class _MediaPipeBackend:
     def __init__(self):
+        _require_cv2()
         try:
             import mediapipe as mp
             from mediapipe.tasks import python as mp_python
@@ -155,6 +172,7 @@ class _MediaPipeBackend:
 
 class _JetsonBackend:
     def __init__(self):
+        _require_cv2()
         try:
             from jetson_utils import cudaFromNumpy, cudaDeviceSynchronize
             from jetson_inference import poseNet
@@ -228,9 +246,63 @@ class _JetsonBackend:
         pass
 
 
+class _MockBackend:
+    def __init__(self):
+        self.name = "mock"
+        self._tick = 0
+
+    def process(self, frame):
+        h, w = frame.shape[:2]
+        self._tick += 1
+
+        t = self._tick * 0.08
+        cx = 0.5 + 0.2 * math.sin(t)
+        cy = 0.5 + 0.15 * math.cos(t * 0.7)
+
+        left = self._make_hand(
+            center_x=min(max(cx - 0.18, 0.1), 0.9),
+            center_y=min(max(cy, 0.1), 0.9),
+            w=w,
+            h=h,
+            finger_count=3,
+        )
+        right = self._make_hand(
+            center_x=min(max(cx + 0.18, 0.1), 0.9),
+            center_y=min(max(cy, 0.1), 0.9),
+            w=w,
+            h=h,
+            finger_count=2,
+        )
+
+        return {"left": left, "right": right}
+
+    def _make_hand(self, center_x, center_y, w, h, finger_count):
+        palm_px = (int(center_x * w), int(center_y * h))
+        index_tip_px = (int((center_x + 0.04) * w), int((center_y - 0.07) * h))
+
+        fingers_up = [False] * 5
+        for i in range(min(max(finger_count, 0), 5)):
+            fingers_up[i] = True
+
+        return {
+            "palm_norm": (float(center_x), float(center_y)),
+            "palm_px": palm_px,
+            "finger_count": int(finger_count),
+            "fingers_up": fingers_up,
+            "is_pinched": False,
+            "pinch_dist": 0.2,
+            "tilt_deg": -90.0,
+            "fingertips_px": [index_tip_px] * 5,
+            "index_tip_px": index_tip_px,
+        }
+
+    def release(self):
+        pass
+
+
 def _resolve_backend_name(backend_name):
     if backend_name is None:
-        backend_name = HAND_BACKEND
+        backend_name = os.environ.get("HAND_BACKEND", HAND_BACKEND)
 
     backend_name = backend_name.lower().strip()
     if backend_name == "auto":
@@ -249,9 +321,11 @@ class HandTracker:
             self._impl = _MediaPipeBackend()
         elif resolved == "jetson":
             self._impl = _JetsonBackend()
+        elif resolved == "mock":
+            self._impl = _MockBackend()
         else:
             raise ValueError(
-                f"Unknown HAND_BACKEND='{resolved}'. Expected auto|mediapipe|jetson"
+                f"Unknown HAND_BACKEND='{resolved}'. Expected auto|mediapipe|jetson|mock"
             )
 
         self.backend_name = self._impl.name

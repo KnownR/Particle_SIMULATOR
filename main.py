@@ -67,11 +67,21 @@ def draw_hud(frame, ps, left, right, fps):
 # ── Main loop ────────────────────────────
 def main():
     cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("[ERROR] Camera open failed. Check /dev/video0 permissions/device.")
+        return
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
     cap.set(cv2.CAP_PROP_FPS, FPS)
 
-    tracker = HandTracker()
+    try:
+        tracker = HandTracker()
+    except Exception as exc:
+        print(f"[ERROR] HandTracker init failed: {exc}")
+        cap.release()
+        return
+
     ps      = ParticleSystem()
 
     # Persistent canvas for trails
