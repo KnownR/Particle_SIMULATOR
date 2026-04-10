@@ -57,7 +57,7 @@ fi
 
 log "Starting container"
 docker run --rm -it --runtime nvidia --network host --ipc host \
-  "${DEVICE_ARGS[@]}" \
+  ${DEVICE_ARGS[@]+"${DEVICE_ARGS[@]}"} \
   -e HAND_BACKEND=auto \
   -e DISPLAY="$DISPLAY" \
   -e LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH:-}" \

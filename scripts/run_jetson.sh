@@ -45,7 +45,7 @@ log "Display: $DISPLAY | Backend: $HAND_BACKEND"
 log "Starting Particle Simulator..."
 
 exec docker run --rm -it --runtime nvidia --network host --ipc host \
-  "${DEVICE_ARGS[@]}" \
+  ${DEVICE_ARGS[@]+"${DEVICE_ARGS[@]}"} \
   -e DISPLAY="$DISPLAY" \
   -e HAND_BACKEND="$HAND_BACKEND" \
   -e LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH:-}" \
