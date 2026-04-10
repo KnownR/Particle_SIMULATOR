@@ -88,13 +88,33 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.jetson.txt
 python3 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
 python3 smoke_test.py --backend mock --frames '$FRAMES'
-if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ]; then
+
+REQUESTED_BACKEND=\"$BACKEND\"
+EFFECTIVE_BACKEND=\"$REQUESTED_BACKEND\"
+
+if [ \"$REQUESTED_BACKEND\" = \"jetson\" ]; then
+  if python3 -c \"import jetson_utils, jetson_inference\" >/dev/null 2>&1; then
+    echo '[docker] Jetson Python bindings detected.'
+  else
+    if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ]; then
+      echo '[docker][ERROR] Jetson backend requested, but jetson bindings are missing.'
+      python3 -c \"import jetson_utils, jetson_inference\"
+      exit 1
+    else
+      echo '[docker][WARN] Jetson bindings missing; falling back to HAND_BACKEND=mock.'
+      EFFECTIVE_BACKEND=mock
+    fi
+  fi
+fi
+
+if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ] && [ \"$EFFECTIVE_BACKEND\" = \"jetson\" ]; then
   python3 -c \"from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print('[PASS] backend=', t.backend_name)\"
-else
+elif [ \"\${CHECK_JETSON_INIT}\" = \"0\" ]; then
   echo '[docker] CHECK_JETSON_INIT=0 so skipping strict jetson backend init check'
 fi
+
 if [ '$RUN_APP' = '1' ]; then
-  python3 main.py
+  HAND_BACKEND=\"$EFFECTIVE_BACKEND\" python3 main.py
 else
   echo '[docker] RUN_APP=0 so skipping main.py'
 fi
