@@ -49,6 +49,8 @@ exec docker run --rm -it --runtime nvidia --network host --ipc host \
   -e DISPLAY="$DISPLAY" \
   -e HAND_BACKEND="$HAND_BACKEND" \
   -e PYTHONIOENCODING="utf-8" \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$PROJECT_DIR":/workspace/Particle_SIMULATOR \
   "$IMAGE_NAME" \
