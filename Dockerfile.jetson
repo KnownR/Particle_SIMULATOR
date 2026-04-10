@@ -9,6 +9,16 @@
 ARG BASE_IMAGE=dustynv/jetson-inference:r32.7.1
 FROM ${BASE_IMAGE}
 
+# ── Hold CUDA/TensorRT packages so apt can't replace them with Ubuntu stubs ──
+RUN apt-mark hold \
+      tensorrt libnvinfer8 libnvinfer-dev \
+      libnvinfer-plugin8 libnvinfer-plugin-dev \
+      libnvparsers8 libnvparsers-dev \
+      libnvonnxparsers8 libnvonnxparsers-dev \
+      libcudnn8 libcudnn8-dev \
+      cuda-toolkit-10-2 \
+    2>/dev/null || true
+
 # ── System libraries for OpenCV display + X11 GUI ──
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
