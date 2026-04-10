@@ -10,12 +10,8 @@ ARG BASE_IMAGE=dustynv/jetson-inference:r32.7.1
 FROM ${BASE_IMAGE}
 
 # ── System libraries for OpenCV display + X11 GUI ──
-# Because the host NVIDIA runtime is failing to mount libcudnn.so.8 and libnvinfer.so.8,
-# the hardware-accelerated JetPack CV2 is fatally broken on this Jetson. We MUST install
-# the CPU-only generic Ubuntu CV2 to bypass the GPU hardware entirely, or the app will not start.
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
-      python3-opencv \
       libgl1 \
       libglib2.0-0 \
       libsm6 \
@@ -24,9 +20,6 @@ RUN apt-get update -qq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# ── Force Python to use the CPU OpenCV instead of JetPack ──
-RUN rm -rf /usr/lib/python3.6/dist-packages/cv2* \
-           /usr/local/lib/python3.6/dist-packages/cv2* 2>/dev/null || true
 
 # ── Remove any pip-installed OpenCV that shadows the APT system package ──
 RUN python3 -m pip uninstall -y \
