@@ -308,7 +308,7 @@ def _resolve_backend_name(backend_name):
     if backend_name == "auto":
         machine = platform.machine().lower()
         if machine in ("aarch64", "arm64"):
-            return "jetson"
+            return "mediapipe"
         return "mediapipe"
     return backend_name
 

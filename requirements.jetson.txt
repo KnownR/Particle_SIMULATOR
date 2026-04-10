@@ -1,7 +1,12 @@
-# Jetson Nano runtime Python deps for this app.
-# NOTE: jetson_utils / jetson_inference are typically provided by
-# the NVIDIA Jetson environment or dustynv/jetson-inference container,
-# not installed with pip.
+# Jetson Nano runtime Python deps — install with Python 3.8:
+#   python3.8 -m pip install -r requirements.jetson.txt
+#
+# NOTE: The dustynv/jetson-inference:r32.7.1 container ships Python 3.6.
+# mediapipe aarch64 wheels are only published for Python >= 3.8.
+# Install Python 3.8 via deadsnakes PPA inside the container first.
+# The run_jetson_docker.sh script handles all of this automatically.
 
 numpy>=1.19,<2.0
-# OpenCV should come from JetPack/Jetson container images.
+mediapipe
+# opencv-python: install with pip for python3.8 (pip install opencv-python).
+# Do NOT use pip opencv-* for python3.6 — use APT python3-opencv instead.

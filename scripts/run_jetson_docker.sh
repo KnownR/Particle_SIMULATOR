@@ -7,7 +7,7 @@ PROJECT_DIR="${PROJECT_DIR:-$DEFAULT_PROJECT_DIR}"
 IMAGE="${IMAGE:-dustynv/jetson-inference:r32.7.1}"
 FRAMES="${FRAMES:-30}"
 RUN_APP="${RUN_APP:-1}"
-BACKEND="${BACKEND:-mock}"
+BACKEND="${BACKEND:-mediapipe}"
 CHECK_JETSON_INIT="${CHECK_JETSON_INIT:-0}"
 CAMERA_DEVICE="${CAMERA_DEVICE:-/dev/video0}"
 
@@ -64,58 +64,39 @@ docker run --rm -it --runtime nvidia --network host --ipc host \
   bash -lc "
 set -euo pipefail
 cd /workspace/Particle_SIMULATOR
-python3 -m pip uninstall -y \
-  opencv-python \
-  opencv-contrib-python \
-  opencv-python-headless \
-  opencv-contrib-python-headless || true
-rm -rf /usr/local/lib/python3.6/dist-packages/cv2* || true
-rm -rf /usr/local/lib/python3.6/dist-packages/opencv_python* || true
-rm -rf /usr/local/lib/python3.8/dist-packages/cv2* || true
-rm -rf /usr/local/lib/python3.8/dist-packages/opencv_python* || true
-rm -rf /usr/local/lib/python3.10/dist-packages/cv2* || true
-rm -rf /usr/local/lib/python3.10/dist-packages/opencv_python* || true
-apt-get update
-apt-get install -y \
-  python3-opencv \
-  libgl1 \
-  libglib2.0-0 \
-  libsm6 \
-  libxext6 \
-  libxrender1
+
+# ── Remove pip-installed OpenCV (it conflicts with the APT system package) ──
+python3 -m pip uninstall -y opencv-python opencv-contrib-python opencv-python-headless opencv-contrib-python-headless 2>/dev/null || true
+rm -rf /usr/local/lib/python3.6/dist-packages/cv2* /usr/local/lib/python3.6/dist-packages/opencv_python* 2>/dev/null || true
+
+# ── System runtime libs + tools needed for Python 3.8 install ──
+apt-get update -qq
+apt-get install -y python3-opencv libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 software-properties-common wget
+
+# ── Python 3.8 via deadsnakes PPA ──
+# mediapipe publishes aarch64 wheels only for Python >= 3.8.
+# The dustynv r32.7.1 container ships Python 3.6; deadsnakes adds 3.8 alongside it.
+add-apt-repository -y ppa:deadsnakes/ppa
+apt-get update -qq
+apt-get install -y python3.8 python3.8-dev python3.8-distutils
+
+# ── pip for Python 3.8 ──
+python3.8 -m ensurepip --upgrade 2>/dev/null || (wget -qO /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py && python3.8 /tmp/get-pip.py)
+python3.8 -m pip install --upgrade pip
+
+# ── App Python deps under Python 3.8 ──
+python3.8 -m pip install 'numpy>=1.19,<2.0' mediapipe opencv-python
+
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:\${LD_LIBRARY_PATH:-}
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.jetson.txt
-python3 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
-python3 smoke_test.py --backend mock --frames '$FRAMES'
 
-REQUESTED_BACKEND=\"$BACKEND\"
-EFFECTIVE_BACKEND=\"$REQUESTED_BACKEND\"
-
-if [ \"$REQUESTED_BACKEND\" = \"jetson\" ]; then
-  if python3 -c \"import jetson_utils, jetson_inference\" >/dev/null 2>&1; then
-    echo '[docker] Jetson Python bindings detected.'
-  else
-    if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ]; then
-      echo '[docker][ERROR] Jetson backend requested, but jetson bindings are missing.'
-      python3 -c \"import jetson_utils, jetson_inference\"
-      exit 1
-    else
-      echo '[docker][WARN] Jetson bindings missing; falling back to HAND_BACKEND=mock.'
-      EFFECTIVE_BACKEND=mock
-    fi
-  fi
-fi
-
-if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ] && [ \"$EFFECTIVE_BACKEND\" = \"jetson\" ]; then
-  python3 -c \"from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print('[PASS] backend=', t.backend_name)\"
-elif [ \"\${CHECK_JETSON_INIT}\" = \"0\" ]; then
-  echo '[docker] CHECK_JETSON_INIT=0 so skipping strict jetson backend init check'
-fi
+# ── Sanity checks ──
+python3.8 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
+python3.8 -c \"import mediapipe; print('[PASS] mediapipe=', mediapipe.__version__)\"
+python3.8 smoke_test.py --backend mock --frames $FRAMES
 
 if [ '$RUN_APP' = '1' ]; then
-  HAND_BACKEND=\"$EFFECTIVE_BACKEND\" python3 main.py
+  HAND_BACKEND=mediapipe python3.8 main.py
 else
-  echo '[docker] RUN_APP=0 so skipping main.py'
+  echo '[docker] RUN_APP=0; skipping main.py'
 fi
 "

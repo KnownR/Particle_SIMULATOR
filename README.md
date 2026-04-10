@@ -83,19 +83,24 @@ python main.py
 cd ~/Particle_SIMULATOR
 ```
 
-2) Install system libraries needed by OpenCV:
+2) Install system libraries + Python 3.8 (the dustynv container ships Python 3.6;
+   mediapipe aarch64 wheels require Python >= 3.8):
 
 ```bash
 sudo apt update
-sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1
+sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt install -y python3.8 python3.8-dev python3.8-distutils
 ```
 
-3) Create and activate virtual environment:
+3) Bootstrap pip for Python 3.8 and create a venv:
 
 ```bash
-python3 -m venv venv
+python3.8 -m ensurepip --upgrade 2>/dev/null || (wget -qO /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py && python3.8 /tmp/get-pip.py)
+python3.8 -m pip install virtualenv
+python3.8 -m venv venv
 source venv/bin/activate
-python -m pip install --upgrade pip
+pip install --upgrade pip
 ```
 
 4) Install Python dependencies:
@@ -104,10 +109,10 @@ python -m pip install --upgrade pip
 pip install -r requirements.jetson.txt
 ```
 
-5) In `config.py`, set:
+5) `config.py` already defaults to:
 
 ```python
-HAND_BACKEND = "jetson"
+HAND_BACKEND = "mediapipe"
 ```
 
 6) Smoke test first (no camera needed):
@@ -122,10 +127,10 @@ Expected:
 [PASS] Smoke test passed for backend='mock' over 30 frames.
 ```
 
-7) Check Jetson backend init:
+7) Check MediaPipe backend init:
 
 ```bash
-python -c "from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print(t.backend_name)"
+python -c "from hand_tracker import HandTracker; t=HandTracker(); print(t.backend_name)"
 ```
 
 8) Run full app:
@@ -186,11 +191,11 @@ Use one of these:
 
 ## Troubleshooting
 
-- `ImportError: libGL.so.1`: install `libgl1` and related system libs (see native step 2).
-- `Unknown HAND_BACKEND='mock'`: update Jetson repo to latest code.
-- `jetson_utils` / `jetson_inference` missing: run in proper Jetson environment/container.
-- Camera open failed: check `ls /dev/video0` and camera permissions.
-- No window shown over SSH: use monitor/VNC/X11 forwarding.
+- `ImportError: libGL.so.1`: install `libgl1` and related system libs.
+- `Cannot import mediapipe`: you are on Python 3.6 — mediapipe needs Python 3.8+. Install via deadsnakes PPA (see native setup step 2).
+- Camera open failed: check `ls /dev/video0` and camera permissions (`sudo chmod 666 /dev/video0`).
+- No window shown over SSH: use VNC or `ssh -X` with a local X server.
+- Slow over VNC: expected — VNC adds latency. Lower `FPS` in `config.py` to `15` to reduce load.
 
 ---
 

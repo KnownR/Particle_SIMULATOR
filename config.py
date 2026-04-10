@@ -12,7 +12,7 @@ WINDOW_TITLE = "Particle Simulator — Hand Controlled"
 # mediapipe -> force MediaPipe backend
 # jetson  -> force Jetson-native backend
 # mock    -> synthetic hand data (smoke testing)
-HAND_BACKEND = "jetson"
+HAND_BACKEND = "mediapipe"
 
 # Jetson pose model name used by jetson-inference poseNet
 # You can override with env var JETSON_POSE_MODEL.
