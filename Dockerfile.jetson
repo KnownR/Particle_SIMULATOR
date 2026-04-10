@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────────────────────
+#  Dockerfile.jetson  —  Pre-bakes all deps into the dustynv image.
+#  Build ONCE on the Jetson, then run instantly every time.
+#
+#  Usage:
+#    docker build -t particle-sim -f Dockerfile.jetson .
+#    # then: ./scripts/run_jetson.sh
+# ──────────────────────────────────────────────────────────────
+ARG BASE_IMAGE=dustynv/jetson-inference:r32.7.1
+FROM ${BASE_IMAGE}
+
+# ── System libraries for OpenCV display + X11 GUI ──
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+      python3-opencv \
+      libgl1 \
+      libglib2.0-0 \
+      libsm6 \
+      libxext6 \
+      libxrender1 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Remove any pip-installed OpenCV that shadows the APT system package ──
+RUN python3 -m pip uninstall -y \
+      opencv-python opencv-contrib-python \
+      opencv-python-headless opencv-contrib-python-headless 2>/dev/null; \
+    rm -rf /usr/local/lib/python3.6/dist-packages/cv2* \
+           /usr/local/lib/python3.6/dist-packages/opencv_python* 2>/dev/null; \
+    true
+
+# ── Python deps ──
+RUN python3 -m pip install --no-cache-dir "numpy>=1.19,<2.0"
+
+# ── Verify core imports (CUDA not available at build time, so skip jetson_utils) ──
+RUN python3 -c "import cv2; print('[OK] cv2', cv2.__version__)" && \
+    python3 -c "import numpy; print('[OK] numpy', numpy.__version__)"
+
+WORKDIR /workspace/Particle_SIMULATOR

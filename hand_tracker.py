@@ -1,12 +1,14 @@
 # ─────────────────────────────────────────
 #  hand_tracker.py  —  Cross-platform tracker facade
-#  Laptop: MediaPipe backend
-#  Jetson: jetson-inference pose backend
+#  Laptop: MediaPipe backend (CPU)
+#  Jetson: jetson-inference poseNet body backend (CUDA)
+#  Mock:   synthetic data for smoke testing
 # ─────────────────────────────────────────
 
 import math
 import os
 import platform
+import sys
 import urllib.request
 
 from config import (
@@ -107,6 +109,62 @@ def _extract_from_points(pts, w, h):
     }
 
 
+# ─────────────────────────────────────────
+#  Jetson import helper — tries every known path/name
+# ─────────────────────────────────────────
+
+def _try_import_jetson():
+    """Try to import jetson_utils and jetson_inference.
+
+    The dustynv containers install them to /usr/lib/python3/dist-packages/.
+    Older containers use underscore names (jetson_utils), newer ones use
+    the jetson.utils namespace.  We try both, and also add known build
+    paths to sys.path before retrying.
+
+    Returns (jetson_utils_module, jetson_inference_module) or raises ImportError.
+    """
+    # Add known search paths for jetson Python bindings
+    extra_paths = [
+        "/jetson-inference/build/aarch64/lib/python",
+        "/usr/lib/python3/dist-packages",
+    ]
+    for p in extra_paths:
+        if os.path.isdir(p) and p not in sys.path:
+            sys.path.insert(0, p)
+
+    errors = []
+
+    # Attempt 1: underscore form (older containers, r32.x)
+    try:
+        import jetson_utils as _ju
+        import jetson_inference as _ji
+        return _ju, _ji
+    except ImportError as e:
+        errors.append(f"jetson_utils: {e}")
+
+    # Attempt 2: namespace package form (newer containers)
+    try:
+        import jetson.utils as _ju      # type: ignore
+        import jetson.inference as _ji   # type: ignore
+        return _ju, _ji
+    except ImportError as e:
+        errors.append(f"jetson.utils: {e}")
+
+    raise ImportError(
+        f"Could not import jetson bindings.\n"
+        f"  Tried: {'; '.join(errors)}\n"
+        f"  LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH', 'NOT SET')}\n"
+        f"  Relevant sys.path entries: "
+        f"{[p for p in sys.path if 'jetson' in p.lower() or 'dist-packages' in p]}\n"
+        f"  Fix: run inside dustynv/jetson-inference container with --runtime nvidia.\n"
+        f"  Debug: python3 scripts/diagnose_jetson.py"
+    )
+
+
+# ─────────────────────────────────────────
+#  MediaPipe backend  (CPU — laptop & fallback)
+# ─────────────────────────────────────────
+
 class _MediaPipeBackend:
     def __init__(self):
         _require_cv2()
@@ -170,81 +228,151 @@ class _MediaPipeBackend:
         self.landmarker.close()
 
 
+# ─────────────────────────────────────────
+#  Jetson backend  (CUDA — GPU-accelerated body pose)
+# ─────────────────────────────────────────
+#
+#  Uses poseNet("resnet18-body") which detects 18 body keypoints via CUDA.
+#  We extract wrist positions (left_wrist=9, right_wrist=10) as hand locations.
+#
+#  Finger count and gestures are approximated from wrist height:
+#    hand high → many fingers up = high count
+#    hand low  → fist/few fingers = low count
+#
+#  This is NOT 21-point hand landmark detection — it's body-pose wrist
+#  tracking.  But it runs at 30+ FPS on the Jetson Nano's GPU, which
+#  beats 8 FPS CPU-only MediaPipe over VNC.
+#
+#  Body keypoints (resnet18-body):
+#   0  nose           5  left_shoulder   9  left_wrist    13  left_knee
+#   1  left_eye       6  right_shoulder  10 right_wrist   14  right_knee
+#   2  right_eye      7  left_elbow      11 left_hip      15  left_ankle
+#   3  left_ear       8  right_elbow     12 right_hip     16  right_ankle
+#   4  right_ear                                          17  neck
+# ─────────────────────────────────────────
+
 class _JetsonBackend:
+
+    # Map wrist-Y (normalised) → simulated finger count.
+    # Hand raised high = more fingers up.  Hand low = fist.
+    _FINGER_ZONES = [
+        (0.20, 5),   # very high  → 5 fingers (rainbow palette / wave mode)
+        (0.35, 4),   # high       → 4 (aurora / wave)
+        (0.50, 3),   # mid-upper  → 3 (ocean / chaos)
+        (0.65, 2),   # mid-lower  → 2 (fire / orbital)
+        (0.80, 1),   # low        → 1 (mono / wind)
+        (1.00, 0),   # very low   → 0 (freeze)
+    ]
+
     def __init__(self):
         _require_cv2()
-        try:
-            from jetson_utils import cudaFromNumpy, cudaDeviceSynchronize
-            from jetson_inference import poseNet
-        except ImportError as exc:
-            raise RuntimeError(
-                "Jetson backend selected, but jetson-inference bindings are missing. "
-                "Run inside a Jetson container/environment that provides jetson_utils "
-                "and jetson_inference."
-            ) from exc
+
+        ju, ji = _try_import_jetson()
+        self._cudaFromNumpy = ju.cudaFromNumpy
+        self._cudaDeviceSynchronize = ju.cudaDeviceSynchronize
 
         model_name = os.environ.get("JETSON_POSE_MODEL", JETSON_POSE_MODEL)
         threshold = float(os.environ.get("JETSON_POSE_THRESHOLD", JETSON_POSE_THRESHOLD))
 
-        self.cudaFromNumpy = cudaFromNumpy
-        self.cudaDeviceSynchronize = cudaDeviceSynchronize
-        self.net = poseNet(model_name, threshold=threshold)
+        self.net = ji.poseNet(model_name, threshold=threshold)
         self.name = f"jetson:{model_name}"
+        print(f"[INFO] JetsonBackend loaded: {self.name} "
+              f"({self.net.GetNumKeypoints()} keypoints, CUDA)")
 
+    # ── per-frame ──────────────────────────
     def process(self, frame):
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        cuda_img = self.cudaFromNumpy(rgb)
+        cuda_img = self._cudaFromNumpy(rgb)
 
         poses = self.net.Process(cuda_img)
-        self.cudaDeviceSynchronize()
+        self._cudaDeviceSynchronize()
 
         left_data = None
         right_data = None
 
         for pose in poses:
-            pts = self._extract_pose_points(pose, w, h)
-            if pts is None:
-                continue
+            self._draw_pose(frame, pose)
 
-            landmarks_px = [(int(x * w), int(y * h)) for x, y in pts]
-            _draw_landmarks(frame, landmarks_px)
-            data = _extract_from_points(pts, w, h)
-            if data is None:
-                continue
+            ld = self._hand_from_wrist(pose, w, h, "left")
+            rd = self._hand_from_wrist(pose, w, h, "right")
 
-            palm_x = data["palm_norm"][0]
-            label = "Left" if palm_x < 0.5 else "Right"
-
-            if label == "Left":
-                left_data = data
-            else:
-                right_data = data
+            if ld and left_data is None:
+                left_data = ld
+            if rd and right_data is None:
+                right_data = rd
 
         return {"left": left_data, "right": right_data}
 
-    def _extract_pose_points(self, pose, w, h):
-        keypoints = getattr(pose, "Keypoints", None)
-        if not keypoints:
+    # ── extract hand-like data from a body wrist keypoint ──
+    def _hand_from_wrist(self, pose, w, h, side):
+        wrist_idx = pose.FindKeypoint(f"{side}_wrist")
+        if wrist_idx < 0:
             return None
 
-        pts = [None] * 21
-        for kp in keypoints:
-            kp_id = getattr(kp, "ID", getattr(kp, "id", None))
-            x = getattr(kp, "x", None)
-            y = getattr(kp, "y", None)
-            if kp_id is None or x is None or y is None:
-                continue
-            if 0 <= kp_id < 21:
-                pts[kp_id] = (float(x) / max(w, 1), float(y) / max(h, 1))
+        kp = pose.Keypoints[wrist_idx]
+        # poseNet returns pixel coordinates
+        nx = kp.x / max(w, 1)
+        ny = kp.y / max(h, 1)
 
-        if any(p is None for p in pts):
-            return None
-        return pts
+        # Finger count from wrist height
+        finger_count = 0
+        for max_y, fc in self._FINGER_ZONES:
+            if ny < max_y:
+                finger_count = fc
+                break
+
+        fingers_up = [i < finger_count for i in range(5)]
+
+        # Tilt from elbow → wrist angle
+        tilt_deg = -90.0
+        elbow_idx = pose.FindKeypoint(f"{side}_elbow")
+        if elbow_idx >= 0:
+            ek = pose.Keypoints[elbow_idx]
+            tilt_deg = math.degrees(math.atan2(kp.y - ek.y, kp.x - ek.x))
+
+        # Pinch: not possible with body pose — always False
+        palm_px = (int(kp.x), int(kp.y))
+        tip_px = (int(kp.x), max(int(kp.y) - 20, 0))
+
+        return {
+            "palm_norm": (nx, ny),
+            "palm_px": palm_px,
+            "finger_count": int(finger_count),
+            "fingers_up": fingers_up,
+            "is_pinched": False,
+            "pinch_dist": 0.5,
+            "tilt_deg": float(tilt_deg),
+            "fingertips_px": [tip_px] * 5,
+            "index_tip_px": tip_px,
+        }
+
+    # ── draw upper-body keypoints for visual feedback ──
+    def _draw_pose(self, frame, pose):
+        if cv2 is None:
+            return
+        arm_joints = ["shoulder", "elbow", "wrist"]
+        for side in ("left", "right"):
+            color = (0, 255, 0) if side == "left" else (255, 160, 0)
+            pts = []
+            for joint in arm_joints:
+                idx = pose.FindKeypoint(f"{side}_{joint}")
+                if idx >= 0:
+                    kp = pose.Keypoints[idx]
+                    px = (int(kp.x), int(kp.y))
+                    cv2.circle(frame, px, 5, color, -1)
+                    pts.append(px)
+            # Connect joints with lines
+            for i in range(len(pts) - 1):
+                cv2.line(frame, pts[i], pts[i + 1], (0, 200, 100), 2)
 
     def release(self):
         pass
 
+
+# ─────────────────────────────────────────
+#  Mock backend  (no camera needed)
+# ─────────────────────────────────────────
 
 class _MockBackend:
     def __init__(self):
@@ -300,6 +428,10 @@ class _MockBackend:
         pass
 
 
+# ─────────────────────────────────────────
+#  Backend resolution
+# ─────────────────────────────────────────
+
 def _resolve_backend_name(backend_name):
     if backend_name is None:
         backend_name = os.environ.get("HAND_BACKEND", HAND_BACKEND)
@@ -308,7 +440,7 @@ def _resolve_backend_name(backend_name):
     if backend_name == "auto":
         machine = platform.machine().lower()
         if machine in ("aarch64", "arm64"):
-            return "mediapipe"
+            return "jetson"
         return "mediapipe"
     return backend_name
 
@@ -319,10 +451,22 @@ class HandTracker:
 
         if resolved == "mediapipe":
             self._impl = _MediaPipeBackend()
+
         elif resolved == "jetson":
-            self._impl = _JetsonBackend()
+            try:
+                self._impl = _JetsonBackend()
+            except (RuntimeError, ImportError) as exc:
+                print(f"[WARN] Jetson backend failed: {exc}")
+                print("[WARN] Falling back to mediapipe...")
+                try:
+                    self._impl = _MediaPipeBackend()
+                except (RuntimeError, ImportError):
+                    print("[WARN] MediaPipe also unavailable, using mock backend.")
+                    self._impl = _MockBackend()
+
         elif resolved == "mock":
             self._impl = _MockBackend()
+
         else:
             raise ValueError(
                 f"Unknown HAND_BACKEND='{resolved}'. Expected auto|mediapipe|jetson|mock"

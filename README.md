@@ -4,50 +4,21 @@ Hand-controlled particle simulator.
 
 ## Requirements
 
-- Python `3.10+`
+- Python `3.6+` (Jetson) or `3.10+` (Laptop)
 - Webcam (usually `/dev/video0` on Linux/Jetson)
-- For laptop run: `opencv-python`, `mediapipe`, `numpy`
-- For Jetson backend: `jetson_utils` and `jetson_inference` (from Jetson environment/container)
+- For laptop: `opencv-python`, `mediapipe`, `numpy`
+- For Jetson: `dustynv/jetson-inference` Docker image (provides CUDA + `jetson_utils`)
 
 ## Backends
 
-- `HAND_BACKEND = "mediapipe"` for laptop
-- `HAND_BACKEND = "jetson"` for Jetson Nano
-- `HAND_BACKEND = "mock"` for smoke testing without camera/model
+| Backend | Where | Speed | What it does |
+|---------|-------|-------|--------------|
+| `auto` | (default) | — | Picks `jetson` on aarch64, `mediapipe` on x86 |
+| `jetson` | Jetson Nano | 30+ FPS (CUDA) | Body pose → wrist tracking via `poseNet` |
+| `mediapipe` | Laptop/Desktop | 20-30 FPS | 21-point hand landmarks (CPU) |
+| `mock` | Anywhere | 60 FPS | Synthetic hand data for testing |
 
-## One-Command Jetson Scripts (Recommended)
-
-From project root on Jetson:
-
-```bash
-chmod +x scripts/*.sh
-```
-
-1) Full setup (system libs + venv + deps):
-
-```bash
-./scripts/setup_jetson.sh
-```
-
-2) Smoke checks (mock + jetson backend init):
-
-```bash
-./scripts/smoke_checks.sh
-```
-
-3) Docker run (pull image, run smoke checks in container, then app):
-
-```bash
-./scripts/run_jetson_docker.sh
-```
-
-Optional flags:
-
-```bash
-FRAMES=60 ./scripts/smoke_checks.sh
-RUN_APP=0 ./scripts/run_jetson_docker.sh
-IMAGE=dustynv/jetson-inference:r32.7.1 ./scripts/run_jetson_docker.sh
-```
+Set in `config.py` → `HAND_BACKEND` or via env var: `HAND_BACKEND=mock python3 main.py`
 
 ---
 
@@ -61,13 +32,7 @@ IMAGE=dustynv/jetson-inference:r32.7.1 ./scripts/run_jetson_docker.sh
 pip install -r requirements.laptop.txt
 ```
 
-3) In `config.py`, set:
-
-```python
-HAND_BACKEND = "mediapipe"
-```
-
-4) Run:
+3) Run:
 
 ```bash
 python main.py
@@ -75,127 +40,110 @@ python main.py
 
 ---
 
-## Jetson Nano (Native): Setup and Run
+## Jetson Nano (Docker) — Recommended
 
-1) Open terminal on Jetson and go to project:
-
-```bash
-cd ~/Particle_SIMULATOR
-```
-
-2) Install system libraries + Python 3.8 (the dustynv container ships Python 3.6;
-   mediapipe aarch64 wheels require Python >= 3.8):
+### First Time Setup (run once, ~3 minutes)
 
 ```bash
-sudo apt update
-sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 software-properties-common
-sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt install -y python3.8 python3.8-dev python3.8-distutils
+cd /sdcard/Particle_SIMULATOR
+chmod +x scripts/*.sh
+./scripts/build_jetson.sh
 ```
 
-3) Bootstrap pip for Python 3.8 and create a venv:
+This builds a Docker image (`particle-sim`) with all dependencies pre-installed.
+
+### Run the App (instant every time)
 
 ```bash
-python3.8 -m ensurepip --upgrade 2>/dev/null || (wget -qO /tmp/get-pip.py https://bootstrap.pypa.io/get-pip.py && python3.8 /tmp/get-pip.py)
-python3.8 -m pip install virtualenv
-python3.8 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
+export DISPLAY=:1
+./scripts/run_jetson.sh
 ```
 
-4) Install Python dependencies:
+That's it. No waiting, no installs.
+
+### Optional flags
 
 ```bash
-pip install -r requirements.jetson.txt
+# Custom display (default :1 for VNC)
+DISPLAY=:0 ./scripts/run_jetson.sh
+
+# Different camera
+CAMERA_DEVICE=/dev/video1 ./scripts/run_jetson.sh
+
+# Smoke test without camera
+HAND_BACKEND=mock ./scripts/run_jetson.sh
+
+# Force a specific backend
+HAND_BACKEND=jetson ./scripts/run_jetson.sh
 ```
 
-5) `config.py` already defaults to:
+### How the Jetson backend works
 
-```python
-HAND_BACKEND = "mediapipe"
-```
+The `jetson` backend uses `poseNet("resnet18-body")` — a body pose model that runs
+on CUDA at 30+ FPS. It detects 18 body keypoints including wrist positions.
 
-6) Smoke test first (no camera needed):
+- **Wrist position** → controls particle physics (gravity, attraction, count, size)
+- **Wrist height** → simulates finger count (hand high = more fingers = different mode)
+- **Elbow-to-wrist angle** → controls vortex tilt
 
-```bash
-python smoke_test.py --backend mock --frames 30
-```
-
-Expected:
-
-```text
-[PASS] Smoke test passed for backend='mock' over 30 frames.
-```
-
-7) Check MediaPipe backend init:
-
-```bash
-python -c "from hand_tracker import HandTracker; t=HandTracker(); print(t.backend_name)"
-```
-
-8) Run full app:
-
-```bash
-python main.py
-```
+The camera should show your **upper body** (not just hands) for body pose detection.
 
 ---
 
-## Jetson Nano (Docker): Setup and Run
+## Jetson Nano (Docker) — Manual Command
 
-### A) If Jetson has monitor attached (recommended)
-
-1) SSH into Jetson:
+If you prefer a one-liner instead of the scripts:
 
 ```bash
-ssh <user>@<jetson-ip>
-```
-
-2) Set display + allow docker X access:
-
-```bash
-export DISPLAY=:0
+export DISPLAY=:1
 xhost +local:docker
-```
 
-3) Start container (use image tag matching your JetPack):
-
-```bash
 docker run --rm -it --runtime nvidia --network host --ipc host \
   --device /dev/video0 \
   -e DISPLAY=$DISPLAY \
+  -e HAND_BACKEND=auto \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v $HOME/Particle_SIMULATOR:/workspace/Particle_SIMULATOR \
-  dustynv/jetson-inference:r32.7.1
+  -v /sdcard/Particle_SIMULATOR:/workspace/Particle_SIMULATOR \
+  particle-sim \
+  python3 main.py
 ```
 
-4) Inside container:
+> **Note:** This requires `./scripts/build_jetson.sh` to have been run first.
+> If you haven't built the image, replace `particle-sim` with
+> `dustynv/jetson-inference:r32.7.1` — but you'll need to install deps manually.
+
+---
+
+## Jetson Nano (Native — no Docker)
+
+1) Install system libraries + venv:
 
 ```bash
-cd /workspace/Particle_SIMULATOR
-python3 -m pip install -r requirements.jetson.txt
-python3 smoke_test.py --backend mock --frames 30
-python3 -c "from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print(t.backend_name)"
-python3 main.py
+sudo apt update
+sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+pip install -r requirements.jetson.txt
 ```
 
-### B) SSH-only (no monitor)
+2) Run:
 
-`cv2.imshow` window will not appear in plain SSH shell.
-Use one of these:
+```bash
+HAND_BACKEND=jetson python3 main.py
+```
 
-- X11 forwarding (`ssh -X`) + local X server
-- VNC/NoMachine remote desktop session on Jetson
+> Requires `jetson_utils` and `jetson_inference` available at system level (JetPack).
 
 ---
 
 ## Troubleshooting
 
-- `ImportError: libGL.so.1`: install `libgl1` and related system libs.
-- `Cannot import mediapipe`: you are on Python 3.6 — mediapipe needs Python 3.8+. Install via deadsnakes PPA (see native setup step 2).
-- Camera open failed: check `ls /dev/video0` and camera permissions (`sudo chmod 666 /dev/video0`).
-- No window shown over SSH: use VNC or `ssh -X` with a local X server.
-- Slow over VNC: expected — VNC adds latency. Lower `FPS` in `config.py` to `15` to reduce load.
+- **`ImportError: libGL.so.1`**: install `libgl1` and related system libs.
+- **`jetson_utils` import fails**: run `python3 scripts/diagnose_jetson.py` inside the container for full diagnostics.
+- **Camera open failed**: check `ls /dev/video*` and permissions (`sudo chmod 666 /dev/video0`).
+- **No window over SSH**: use VNC or `ssh -X` with a local X server.
+- **Slow over VNC**: expected — lower `FPS` to `15` and resolution to `320x240` in `config.py`.
+- **No body detected**: make sure upper body is visible in camera (not just hands close-up).
 
 ---
 

@@ -8,15 +8,16 @@ FPS = 30
 WINDOW_TITLE = "Particle Simulator — Hand Controlled"
 
 # ── Tracker backend ─────────────────────
-# auto    -> mediapipe on laptop, jetson on aarch64
+# auto      -> jetson on aarch64 (GPU), mediapipe on x86 (CPU)
 # mediapipe -> force MediaPipe backend
-# jetson  -> force Jetson-native backend
-# mock    -> synthetic hand data (smoke testing)
-HAND_BACKEND = "mediapipe"
+# jetson    -> force Jetson-native poseNet body backend (CUDA)
+# mock      -> synthetic hand data (smoke testing)
+HAND_BACKEND = "auto"
 
-# Jetson pose model name used by jetson-inference poseNet
+# Jetson pose model — resnet18-body gives 18 body keypoints via CUDA.
+# We extract wrist positions (keypoints 9 & 10) as hand locations.
 # You can override with env var JETSON_POSE_MODEL.
-JETSON_POSE_MODEL = "resnet18-hand"
+JETSON_POSE_MODEL = "resnet18-body"
 
 # Confidence threshold for Jetson pose backend
 JETSON_POSE_THRESHOLD = 0.15
