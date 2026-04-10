@@ -67,6 +67,7 @@ apt-get install -y \
   libsm6 \
   libxext6 \
   libxrender1
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:\${LD_LIBRARY_PATH:-}
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.jetson.txt
 python3 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
