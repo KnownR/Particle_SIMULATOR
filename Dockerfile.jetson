@@ -40,8 +40,9 @@ RUN python3 -m pip install --no-cache-dir "numpy>=1.19,<2.0"
 RUN cd /usr/local/cuda-10.2/targets/aarch64-linux/lib && \
     for stub in stubs/libnpp*.so stubs/libcublas*.so stubs/libcuda.so; do \
         [ -f "$stub" ] || continue; \
-        base=$(basename "$stub" .so); \
-        ln -sf "$stub" "${base}.10" 2>/dev/null || true; \
+        name=$(basename "$stub"); \
+        ln -sf "$stub" "${name}.10" 2>/dev/null || true; \
+        echo "Linked: ${name}.10 -> $stub"; \
     done
 
 # ── Register all CUDA lib paths in ldconfig ──
