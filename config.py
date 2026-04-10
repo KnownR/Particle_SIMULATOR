@@ -3,8 +3,8 @@
 # ─────────────────────────────────────────
 
 # Window
-WIDTH, HEIGHT = 1280, 720
-FPS = 60
+WIDTH, HEIGHT = 640, 360
+FPS = 30
 WINDOW_TITLE = "Particle Simulator — Hand Controlled"
 
 # ── Tracker backend ─────────────────────
@@ -23,8 +23,8 @@ JETSON_POSE_THRESHOLD = 0.15
 
 # ── Particle limits ──────────────────────
 PARTICLE_COUNT_LOW    = 100
-PARTICLE_COUNT_MID    = 1000
-PARTICLE_COUNT_HIGH   = 3000   # capped at 3000 for Windows perf (5000 on Jetson later)
+PARTICLE_COUNT_MID    = 300
+PARTICLE_COUNT_HIGH   = 1000   # capped at 3000 for Windows perf (5000 on Jetson later)
 
 # ── Particle appearance ──────────────────
 SIZE_SMALL  = 2
@@ -46,7 +46,7 @@ MODE_WIND    = 1
 MODE_ORBITAL = 2
 MODE_CHAOS   = 3
 MODE_WAVE    = 4
-MODE_BOIDS   = 5          # bonus — may be slow
+MODE_BOIDS   = 3          # bonus — may be slow
 
 # ── Color palettes ───────────────────────
 PALETTES = {
@@ -68,4 +68,4 @@ BIGBANG_DIST   = 0.70
 PARTICLE_LIFETIME = 180   # frames  (3 s @ 60 fps)
 
 # ── Trail ────────────────────────────────
-TRAIL_ALPHA = 40          # 0-255 — lower = longer trails
+TRAIL_ALPHA = 50        # 0-255 — lower = longer trails

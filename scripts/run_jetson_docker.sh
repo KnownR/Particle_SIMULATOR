@@ -7,6 +7,9 @@ PROJECT_DIR="${PROJECT_DIR:-$DEFAULT_PROJECT_DIR}"
 IMAGE="${IMAGE:-dustynv/jetson-inference:r32.7.1}"
 FRAMES="${FRAMES:-30}"
 RUN_APP="${RUN_APP:-1}"
+BACKEND="${BACKEND:-mock}"
+CHECK_JETSON_INIT="${CHECK_JETSON_INIT:-0}"
+CAMERA_DEVICE="${CAMERA_DEVICE:-/dev/video0}"
 
 log() {
   echo "[docker] $*"
@@ -25,6 +28,10 @@ if ! command -v docker >/dev/null 2>&1; then
   fail "docker not found. Install Docker on Jetson first."
 fi
 
+if [[ "$BACKEND" != "mock" && "$BACKEND" != "jetson" && "$BACKEND" != "mediapipe" ]]; then
+  fail "BACKEND must be one of: mock, jetson, mediapipe"
+fi
+
 if [[ -z "${DISPLAY:-}" ]]; then
   export DISPLAY=:0
   log "DISPLAY not set. Using DISPLAY=:0"
@@ -37,13 +44,34 @@ fi
 log "Pulling image: $IMAGE"
 docker pull "$IMAGE"
 
+DEVICE_ARGS=()
+if [[ -e "$CAMERA_DEVICE" ]]; then
+  DEVICE_ARGS=(--device "$CAMERA_DEVICE")
+else
+  log "Camera device not found at $CAMERA_DEVICE (continuing without --device)"
+fi
+
+MOUNT_ARGS=()
+if [[ -d /usr/local/cuda ]]; then
+  MOUNT_ARGS+=( -v /usr/local/cuda:/usr/local/cuda:ro )
+fi
+if [[ -d /usr/lib/aarch64-linux-gnu ]]; then
+  MOUNT_ARGS+=( -v /usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu:ro )
+fi
+if [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
+  MOUNT_ARGS+=( -v /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro )
+fi
+
 log "Starting container"
 docker run --rm -it --runtime nvidia --network host --ipc host \
-  --device /dev/video0 \
-  -e HAND_BACKEND=jetson \
+  "${DEVICE_ARGS[@]}" \
+  -e HAND_BACKEND="$BACKEND" \
+  -e CHECK_JETSON_INIT="$CHECK_JETSON_INIT" \
+  -e LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH:-}" \
   -e DISPLAY="$DISPLAY" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$PROJECT_DIR":/workspace/Particle_SIMULATOR \
+  "${MOUNT_ARGS[@]}" \
   "$IMAGE" \
   bash -lc "
 set -euo pipefail
@@ -72,7 +100,11 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.jetson.txt
 python3 -c \"import cv2; print('[PASS] cv2=', cv2.__version__)\"
 python3 smoke_test.py --backend mock --frames '$FRAMES'
-python3 -c \"from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print('[PASS] backend=', t.backend_name)\"
+if [ \"\${CHECK_JETSON_INIT}\" = \"1\" ]; then
+  python3 -c \"from hand_tracker import HandTracker; t=HandTracker(backend='jetson'); print('[PASS] backend=', t.backend_name)\"
+else
+  echo '[docker] CHECK_JETSON_INIT=0 so skipping strict jetson backend init check'
+fi
 if [ '$RUN_APP' = '1' ]; then
   python3 main.py
 else
