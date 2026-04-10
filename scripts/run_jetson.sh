@@ -48,8 +48,7 @@ exec docker run --rm -it --runtime nvidia --network host --ipc host \
   ${DEVICE_ARGS[@]+"${DEVICE_ARGS[@]}"} \
   -e DISPLAY="$DISPLAY" \
   -e HAND_BACKEND="$HAND_BACKEND" \
-  -e LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH:-}" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$PROJECT_DIR":/workspace/Particle_SIMULATOR \
   "$IMAGE_NAME" \
-  python3 main.py
+  bash -c 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH:-} && cd /workspace/Particle_SIMULATOR && python3 main.py'

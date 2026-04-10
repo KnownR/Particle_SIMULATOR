@@ -32,6 +32,11 @@ RUN python3 -m pip uninstall -y \
 # ── Python deps ──
 RUN python3 -m pip install --no-cache-dir "numpy>=1.19,<2.0"
 
+# ── Ensure dynamic linker knows about /usr/local/lib ──
+# jetson-inference installs libjetson-inference.so and libjetson-utils.so there.
+# Without this, 'import jetson_utils' may fail with missing .so errors.
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/jetson.conf && ldconfig
+
 # ── Verify core imports (CUDA not available at build time, so skip jetson_utils) ──
 RUN python3 -c "import cv2; print('[OK] cv2', cv2.__version__)" && \
     python3 -c "import numpy; print('[OK] numpy', numpy.__version__)"

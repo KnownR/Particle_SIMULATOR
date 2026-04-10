@@ -132,6 +132,21 @@ def _try_import_jetson():
         if os.path.isdir(p) and p not in sys.path:
             sys.path.insert(0, p)
 
+    # Ensure LD_LIBRARY_PATH includes where jetson-inference .so files live.
+    # Without this, 'import jetson_utils' finds the .pyd/.so but it fails
+    # to load because libjetson-inference.so (in /usr/local/lib) isn't found.
+    ld_extra = [
+        "/usr/local/cuda/lib64",
+        "/usr/local/lib",
+        "/usr/lib/aarch64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu/tegra",
+    ]
+    current_ld = os.environ.get("LD_LIBRARY_PATH", "")
+    for p in ld_extra:
+        if os.path.isdir(p) and p not in current_ld:
+            current_ld = p + ":" + current_ld
+    os.environ["LD_LIBRARY_PATH"] = current_ld
+
     errors = []
 
     # Attempt 1: underscore form (older containers, r32.x)
@@ -456,12 +471,19 @@ class HandTracker:
             try:
                 self._impl = _JetsonBackend()
             except (RuntimeError, ImportError) as exc:
-                print(f"[WARN] Jetson backend failed: {exc}")
-                print("[WARN] Falling back to mediapipe...")
+                print("=" * 60)
+                print("  !! JETSON BACKEND FAILED !!")
+                print(f"  Error: {exc}")
+                print("=" * 60)
                 try:
+                    print("[WARN] Trying mediapipe fallback...")
                     self._impl = _MediaPipeBackend()
                 except (RuntimeError, ImportError):
-                    print("[WARN] MediaPipe also unavailable, using mock backend.")
+                    print("=" * 60)
+                    print("  !! MEDIAPIPE ALSO FAILED !!")
+                    print("  !! USING MOCK BACKEND — NO REAL TRACKING !!")
+                    print("  !! You will see fake hands moving on their own !!")
+                    print("=" * 60)
                     self._impl = _MockBackend()
 
         elif resolved == "mock":
