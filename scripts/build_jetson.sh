@@ -8,8 +8,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-particle-sim}"
-BASE_IMAGE="${BASE_IMAGE:-dustynv/jetson-inference:r32.7.1}"
 
+# ── Detect Host L4T Version ──
+# The dustynv image MUST match the host JetPack version. Otherwise, the NVIDIA
+# container runtime fails to mount the host's GPU libraries over the base image stubs,
+# resulting in 'file too short' import errors for libnvinfer/libcudnn.
+BASE_TAG="r32.7.1" # default
+if [ -f "/etc/nv_tegra_release" ]; then
+    REL=$(head -n 1 /etc/nv_tegra_release | awk -F',' '{print $1}' | awk '{print $2}' | tr -d 'R')
+    REV=$(head -n 1 /etc/nv_tegra_release | awk -F',' '{print $2}' | awk '{print $2}')
+    if [ ! -z "$REL" ] && [ ! -z "$REV" ]; then
+        BASE_TAG="r${REL}.${REV}"
+    fi
+fi
+BASE_IMAGE="${BASE_IMAGE:-dustynv/jetson-inference:${BASE_TAG}}"
 log() { echo "[build] $*"; }
 
 log "Building image '$IMAGE_NAME' from base '$BASE_IMAGE'..."
