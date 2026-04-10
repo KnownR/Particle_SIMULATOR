@@ -51,17 +51,6 @@ else
   log "Camera device not found at $CAMERA_DEVICE (continuing without --device)"
 fi
 
-MOUNT_ARGS=()
-if [[ -d /usr/local/cuda ]]; then
-  MOUNT_ARGS+=( -v /usr/local/cuda:/usr/local/cuda:ro )
-fi
-if [[ -d /usr/lib/aarch64-linux-gnu ]]; then
-  MOUNT_ARGS+=( -v /usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu:ro )
-fi
-if [[ -d /usr/lib/aarch64-linux-gnu/tegra ]]; then
-  MOUNT_ARGS+=( -v /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro )
-fi
-
 log "Starting container"
 docker run --rm -it --runtime nvidia --network host --ipc host \
   "${DEVICE_ARGS[@]}" \
@@ -71,7 +60,6 @@ docker run --rm -it --runtime nvidia --network host --ipc host \
   -e DISPLAY="$DISPLAY" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$PROJECT_DIR":/workspace/Particle_SIMULATOR \
-  "${MOUNT_ARGS[@]}" \
   "$IMAGE" \
   bash -lc "
 set -euo pipefail
