@@ -32,4 +32,18 @@ RUN python3 -m pip uninstall -y \
 # ── Python deps ──
 RUN python3 -m pip install --no-cache-dir "numpy>=1.19,<2.0"
 
+# ── Fix missing CUDA Toolkit versioned libraries ──
+# The base image strips out .so.10 suffixes to save space and relies on stubs,
+# but JetPack's OpenCV/jetson_utils dynamically link against libcublas.so.10 etc.
+# Creating versioned symlinks pointing to the stubs satisfies the linker.
+RUN cd /usr/local/cuda-10.2/targets/aarch64-linux/lib/stubs && \
+    for stub in *.so; do \
+        ln -sf "/usr/local/cuda-10.2/targets/aarch64-linux/lib/stubs/$stub" "/usr/local/cuda-10.2/targets/aarch64-linux/lib/${stub}.10"; \
+    done
+
+# ── Register all CUDA lib paths in ldconfig ──
+RUN echo "/usr/local/cuda-10.2/targets/aarch64-linux/lib" > /etc/ld.so.conf.d/cuda-stubs.conf && \
+    echo "/usr/local/lib" >> /etc/ld.so.conf.d/cuda-stubs.conf && \
+    ldconfig
+
 WORKDIR /workspace/Particle_SIMULATOR
