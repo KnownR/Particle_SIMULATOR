@@ -32,26 +32,4 @@ RUN python3 -m pip uninstall -y \
 # ── Python deps ──
 RUN python3 -m pip install --no-cache-dir "numpy>=1.19,<2.0"
 
-# ── Fix missing libnppicc.so.10 and other NPP stubs ──
-# The container only ships stub .so files (no version suffix).
-# jetson_utils requires libnppicc.so.10 at import time.
-# We create versioned symlinks from the stubs so dlopening works.
-# If --runtime nvidia provides real libs at these paths, they take precedence.
-RUN cd /usr/local/cuda-10.2/targets/aarch64-linux/lib && \
-    for stub in stubs/libnpp*.so stubs/libcublas*.so stubs/libcuda.so; do \
-        [ -f "$stub" ] || continue; \
-        name=$(basename "$stub"); \
-        ln -sf "$stub" "${name}.10" 2>/dev/null || true; \
-        echo "Linked: ${name}.10 -> $stub"; \
-    done
-
-# ── Register all CUDA lib paths in ldconfig ──
-RUN echo "/usr/local/cuda-10.2/targets/aarch64-linux/lib" > /etc/ld.so.conf.d/cuda-aarch64.conf && \
-    echo "/usr/local/lib" >> /etc/ld.so.conf.d/cuda-aarch64.conf && \
-    ldconfig
-
-# ── Verify core imports (CUDA not available at build time, so skip jetson_utils) ──
-RUN python3 -c "import cv2; print('[OK] cv2', cv2.__version__)" && \
-    python3 -c "import numpy; print('[OK] numpy', numpy.__version__)"
-
 WORKDIR /workspace/Particle_SIMULATOR
