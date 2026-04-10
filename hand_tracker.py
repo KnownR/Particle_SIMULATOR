@@ -481,7 +481,7 @@ class HandTracker:
                 except (RuntimeError, ImportError):
                     print("=" * 60)
                     print("  !! MEDIAPIPE ALSO FAILED !!")
-                    print("  !! USING MOCK BACKEND — NO REAL TRACKING !!")
+                    print("  !! USING MOCK BACKEND -- NO REAL TRACKING !!")
                     print("  !! You will see fake hands moving on their own !!")
                     print("=" * 60)
                     self._impl = _MockBackend()
